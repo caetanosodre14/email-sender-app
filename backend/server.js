@@ -35,6 +35,7 @@ app.post('/send-email', async (req, res) => {
     await transporter.sendMail(mailOptions);
     emailsEnviados.push({ para, assunto, mensagem });
 
+    // integração com o Monday
     await axios.post(
       'https://api.monday.com/v2',
       {
