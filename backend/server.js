@@ -44,11 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
         form.reset();
         carregarEmails();
       } else {
-        alert('Erro ao enviar email.');
+        res.status(500).json({ success: false, message: 'Erro ao enviar email.' });
       }
     } catch (error) {
       console.error('Erro:', error);
-      alert('Erro ao enviar email.');
+      res.status(500).json({ success: false, message: 'Erro ao enviar email.' });
     }
   });
 });
