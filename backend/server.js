@@ -1,54 +1,76 @@
-document.addEventListener('DOMContentLoaded', () => {
-  const form = document.querySelector('form');
-  const listaEmails = document.getElementById('lista-emails');
+require('dotenv').config();
+const express = require('express');
+const nodemailer = require('nodemailer');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const axios = require('axios');
 
-  // Função para carregar e-mails já enviados
-  async function carregarEmails() {
-    try {
-      const res = await fetch('https://email-sender-app-tgrn.onrender.com/emails');
-      const emails = await res.json();
-      listaEmails.innerHTML = '';
-      emails.forEach(email => {
-        const li = document.createElement('li');
-        li.textContent = `${email.para} - ${email.assunto}`;
-        listaEmails.appendChild(li);
-      });
-    } catch (err) {
-      console.error('Erro ao carregar e-mails:', err);
-    }
-  }
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-  // Carrega e-mails assim que a página abrir
-  carregarEmails();
+app.use(cors());
+app.use(bodyParser.json());
 
-  // Quando o formulário for enviado
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+let emailsEnviados = [];
 
-    const para = document.getElementById('para').value;
-    const assunto = document.getElementById('assunto').value;
-    const mensagem = document.getElementById('mensagem').value;
+app.post('/send-email', async (req, res) => {
+  const { para, assunto, mensagem } = req.body;
 
-    try {
-      const response = await fetch('https://email-sender-app-tgrn.onrender.com/send-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ para, assunto, mensagem })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        alert('Email enviado com sucesso!');
-        form.reset();
-        carregarEmails();
-      } else {
-        res.status(500).json({ success: false, message: 'Erro ao enviar email.' });
-      }
-    } catch (error) {
-      console.error('Erro:', error);
-      res.status(500).json({ success: false, message: 'Erro ao enviar email.' });
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
     }
   });
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: para,
+    subject: assunto,
+    text: mensagem
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    emailsEnviados.push({ para, assunto, mensagem });
+
+    // integração com o Monday
+    await axios.post(
+      'https://api.monday.com/v2',
+      {
+        query: `
+          mutation {
+            create_item(
+              board_id: ${process.env.BOARD_ID},
+              item_name: "Email para ${para}",
+              column_values: "{\"text\": \"${mensagem}\"}"
+            ) {
+              id
+            }
+          }
+        `
+      },
+      {
+        headers: {
+          Authorization: process.env.MONDAY_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    res.status(200).json({ success: true, message: 'Email enviado com sucesso!' });
+
+  } catch (error) {
+    console.error('Erro:', error);
+    res.status(500).json({ success: false, message: 'Erro ao enviar email.' });
+  }
+});
+
+app.get('/emails', (req, res) => {
+  res.json(emailsEnviados);
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
