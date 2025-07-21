@@ -1,76 +1,54 @@
-require('dotenv').config({ path: __dirname + '/.env' });
-console.log('EMAIL_USER:', process.env.EMAIL_USER);
-const express = require('express');
-const nodemailer = require('nodemailer');
-const cors = require('cors');
-const mondaySdk = require('monday-sdk-js');
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.querySelector('form');
+  const listaEmails = document.getElementById('lista-emails');
 
-const app = express();
-const PORT = 3000;
-
-app.use(cors());
-app.use(express.json());
-
-const monday = mondaySdk();
-monday.setToken(process.env.MONDAY_TOKEN);
-
-let emailsEnviados = [];
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
-
-async function criarItemNoMonday(para, assunto) {
-  const query = `
-    mutation {
-      create_item (
-        board_id: ${process.env.BOARD_ID},
-        item_name: "Email para ${para}: ${assunto}"
-      ) {
-        id
-      }
+  // Função para carregar e-mails já enviados
+  async function carregarEmails() {
+    try {
+      const res = await fetch('https://email-sender-app-tgrn.onrender.com/emails');
+      const emails = await res.json();
+      listaEmails.innerHTML = '';
+      emails.forEach(email => {
+        const li = document.createElement('li');
+        li.textContent = `${email.para} - ${email.assunto}`;
+        listaEmails.appendChild(li);
+      });
+    } catch (err) {
+      console.error('Erro ao carregar e-mails:', err);
     }
-  `;
-  try {
-    const res = await monday.api(query);
-    console.log('Item criado no Monday, id:', res.data.create_item.id);
-  } catch (error) {
-    console.error('Erro ao criar item no Monday:', error);
   }
-}
 
-app.post('/send-email', (req, res) => {
-  const { para, assunto, mensagem } = req.body;
+  // Carrega e-mails assim que a página abrir
+  carregarEmails();
 
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: para,
-    subject: assunto,
-    text: mensagem
-  };
+  // Quando o formulário for enviado
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-  transporter.sendMail(mailOptions, async (error, info) => {
-    if (error) {
-      console.error('Erro ao enviar:', error);
-      return res.status(500).json({ success: false, message: 'Erro ao enviar email' });
-    } else {
-      emailsEnviados.push({ para, assunto, mensagem });
-      console.log('Email enviado com sucesso!');
+    const para = document.getElementById('para').value;
+    const assunto = document.getElementById('assunto').value;
+    const mensagem = document.getElementById('mensagem').value;
 
-      await criarItemNoMonday(para, assunto);
-      return res.json({ success: true, info });
+    try {
+      const response = await fetch('https://email-sender-app-tgrn.onrender.com/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ para, assunto, mensagem })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        alert('Email enviado com sucesso!');
+        form.reset();
+        carregarEmails();
+      } else {
+        alert('Erro ao enviar email.');
+      }
+    } catch (error) {
+      console.error('Erro:', error);
+      alert('Erro ao enviar email.');
     }
   });
-});
-
-app.get('/emails', (req, res) => {
-  res.json(emailsEnviados);
-});
-
-app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
